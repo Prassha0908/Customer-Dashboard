@@ -1,13 +1,12 @@
 const express = require('express');
 const admin = require('firebase-admin');
-const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 const cors = require('cors');
+const serviceAccount = require('./serviceAccountKey.json');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 5000;
 
-
-// Initialize Firebase Admin SDK
+// Initialize Firebase Admin
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
   databaseURL: 'https://customer-dashboard---atl-default-rtdb.firebaseio.com/',
@@ -18,61 +17,92 @@ const db = admin.database();
 app.use(cors({ origin: true }));
 app.use(express.json());
 
-// Helper: Convert email to Firebase-safe key
+// Email sanitizer
 function sanitizeEmail(email) {
   return email.toLowerCase().replace(/\./g, ',');
 }
 
-// ✅ Validate user
-app.post('/validate-user', async (req, res) => {
-  const { email, unitNo } = req.body;
-  console.log("🔍 Validating:", { email, unitNo });
+// POST /validate-user
+app.post("/validate-user", async (req, res) => {
+  const { email, unitNo, projectId } = req.body;
 
-  if (!email || !unitNo) {
-    return res.status(400).json({ message: "Email and Unit No are required." });
+  console.log("REQ BODY:", req.body);
+
+  if (!email || !unitNo || !projectId) {
+    return res.status(400).json({ message: "Missing required fields." });
   }
 
+  const sanitizedEmail = email.toLowerCase().replace(/\./g, ',');
+  console.log("Validating for:", projectId, sanitizedEmail);
   try {
-    const sanitizedEmail = sanitizeEmail(email);
-    const userSnapshot = await db.ref(`users/${sanitizedEmail}`).once('value');
-    const user = userSnapshot.val();
+    const snapshot = await db.ref(`${projectId}/users/${sanitizedEmail}`).once("value");
+    const userData = snapshot.val();
+    console.log("Firebase snapshot result:", userData);
 
-    if (user && String(user.Flat_No).toLowerCase() === unitNo.toLowerCase()) {
-      return res.json(user); // success
-    } else {
-      return res.status(400).json({ message: "Invalid Email or Unit No." });
+    if (!userData) {
+      return res.status(404).json({ message: "User not found." });
     }
+
+    const dbUnit = userData.Flat_No || "";
+    if (dbUnit.toLowerCase() !== unitNo.toLowerCase()) {
+      return res.status(401).json({ message: "Unit No mismatch." });
+    }
+
+    // return the full user data
+    return res.status(200).json(userData);
+
   } catch (error) {
-    console.error("❌ Validation Error:", error);
-    res.status(500).json({ message: "Internal server error." });
+    console.error("Validation error:", error);
+    return res.status(500).json({ message: "Internal server error." });
   }
+
 });
 
-// ✅ Signup Route (for analytics/logging purposes)
-app.post('/signup', async (req, res) => {
-  const { email, unitNo } = req.body;
-  console.log("📥 Signup attempt:", { email, unitNo });
 
-  if (!email || !unitNo) {
-    return res.status(400).json({ message: "Email and Unit No are required." });
+
+// POST /signup (analytics / log)
+app.post('/signup', async (req, res) => {
+  const { email, unitNo, projectId, name, mobile } = req.body;
+  console.log("Signup attempt:", { email, unitNo, projectId });
+
+  if (!email || !unitNo || !projectId) {
+    return res.status(400).json({ message: "Email, Unit No, and Project ID are required." });
   }
 
   try {
-    const newUserRef = db.ref('signedupUsers').push();
-    await newUserRef.set({
-      Email: email,
+    const usersRef = db.ref(`${projectId}/signedinuser`);
+    const snapshot = await usersRef.once("value");
+    const usersData = snapshot.val() || {};
+
+    // 🔍 Check if unitNo already exists (case-insensitive match)
+    const unitAlreadyExists = Object.values(usersData).some(
+      user => user.Flat_No?.toLowerCase() === unitNo.toLowerCase()
+    );
+
+    if (unitAlreadyExists) {
+      return res.status(400).json({ message: "This Unit No is already registered for the selected project." });
+    }
+
+    // Save user under sanitized email
+    const sanitizedEmail = sanitizeEmail(email);
+    const userRef = usersRef.child(sanitizedEmail);
+    await userRef.set({
+      email,
       Flat_No: unitNo,
+      name,
+      mobile,
       createdAt: new Date().toISOString(),
     });
 
-    res.json({ message: "Signup successful!" });
+    return res.json({ message: "Signup successful!" });
   } catch (error) {
-    console.error("❌ Signup Error:", error);
-    res.status(500).json({ message: "Signup failed." });
+    console.error("Signup Error:", error);
+    return res.status(500).json({ message: "Signup failed." });
   }
 });
 
-// Start server
+
+// Start the server
 app.listen(PORT, () => {
-  console.log(`🚀 Server running at http://localhost:${PORT}`);
+  console.log(' Server running at http://localhost:${PORT}`);
 });
