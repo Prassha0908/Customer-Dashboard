@@ -2,6 +2,7 @@ const express = require('express');
 const admin = require('firebase-admin');
 const cors = require('cors');
 const serviceAccount = JSON.parse(process.env.SERVICE_ACCOUNT_KEY);
+console.log("Private key preview:", serviceAccount.private_key?.slice(0, 30));
 
 const app = express();
 const PORT = process.env.PORT || 5000;
