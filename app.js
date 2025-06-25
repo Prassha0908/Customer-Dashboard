@@ -4,6 +4,7 @@ const cors = require('cors');
 const serviceAccount = JSON.parse(process.env.SERVICE_ACCOUNT_KEY);
 console.log("Private key preview:", serviceAccount.private_key?.slice(0, 30));
 
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -44,7 +45,7 @@ app.post("/validate-user", async (req, res) => {
       return res.status(404).json({ message: "User not found." });
     }
 
-    const dbUnit = userData.Flat_No || "";
+    const dbUnit = userData.Unit_No || "";
     if (dbUnit.toLowerCase() !== unitNo.toLowerCase()) {
       return res.status(401).json({ message: "Unit No mismatch." });
     }
@@ -75,9 +76,9 @@ app.post('/signup', async (req, res) => {
     const snapshot = await usersRef.once("value");
     const usersData = snapshot.val() || {};
 
-    // 🔍 Check if unitNo already exists (case-insensitive match)
+    // Check if unitNo already exists (case-insensitive match)
     const unitAlreadyExists = Object.values(usersData).some(
-      user => user.Flat_No?.toLowerCase() === unitNo.toLowerCase()
+      user => user.Unit_No?.toLowerCase() === unitNo.toLowerCase()
     );
 
     if (unitAlreadyExists) {
@@ -89,7 +90,7 @@ app.post('/signup', async (req, res) => {
     const userRef = usersRef.child(sanitizedEmail);
     await userRef.set({
       email,
-      Flat_No: unitNo,
+      Unit_No: unitNo,
       name,
       mobile,
       createdAt: new Date().toISOString(),
@@ -105,5 +106,6 @@ app.post('/signup', async (req, res) => {
 
 // Start the server
 app.listen(PORT, () => {
-  console.log(` Server running at http://localhost:${PORT}`);
+  console.log(`Server running on port ${PORT}. Access it via Render public URL.`);
+
 });
